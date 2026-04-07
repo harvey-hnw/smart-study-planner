@@ -1,218 +1,144 @@
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const GRID_START_HOUR = 8;
-const GRID_END_HOUR = 20;
-const SLOT_MINUTES = 15; // render at 15-min resolution so blocks are continuous
-const STORAGE_KEY = "smart-study-planner.courses";
-let courses = loadCourses();
+/**
+ * Smart Study Planner - Logic Refactor
+ * Implements centralized state management and overlap detection.
+ */
 
-function loadCourses() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (_err) {
-    return [];
-  }
-}
+const CONFIG = {
+  DAYS: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  START_HOUR: 8,
+  END_HOUR: 20,
+  RES_MINS: 15, // 15-minute intervals
+  STORAGE_KEY: "unsw_study_planner_data"
+};
 
-function saveCourses() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(courses));
-}
+let courses = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || [];
 
-function toMinutes(timeValue) {
-  const [h, m] = timeValue.split(":").map(Number);
+// --- Logic Utilities ---
+
+const toMins = (t) => {
+  const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
-}
+};
 
-function formatTime(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
+const formatTime = (m) => {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${h.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+};
 
-function formatRange(course) {
-  return `${course.day} ${formatTime(course.startMin)}-${formatTime(course.endMin)}`;
-}
+const checkOverlap = (a, b) => {
+  return a.day === b.day && a.startMin < b.endMin && b.startMin < a.endMin;
+};
 
-function rangesOverlap(a, b) {
-  return a.startMin < b.endMin && b.startMin < a.endMin;
-}
+const hasClash = (idx) => {
+  return courses.some((c, i) => i !== idx && checkOverlap(courses[idx], c));
+};
 
-function coursesClash(a, b) {
-  return a.day === b.day && rangesOverlap(a, b);
-}
+// --- Actions ---
 
 function addCourse() {
-  const nameInput = document.getElementById("courseName");
-  const dayInput = document.getElementById("courseDay");
-  const startInput = document.getElementById("startTime");
-  const endInput = document.getElementById("endTime");
+  const name = document.getElementById("courseName").value.trim();
+  const day = document.getElementById("courseDay").value;
+  const start = toMins(document.getElementById("startTime").value);
+  const end = toMins(document.getElementById("endTime").value);
 
-  const name = nameInput.value.trim();
-  const day = dayInput.value;
-  const startTime = startInput.value;
-  const endTime = endInput.value;
+  if (!name || isNaN(start) || isNaN(end)) return alert("Please fill all fields");
+  if (end <= start) return alert("End time must be after start time");
 
-  if (!name || !day || !startTime || !endTime) {
-    alert("Please fill in course name, day, start, and end time.");
-    return;
-  }
+  courses.push({ name, day, startMin: start, endMin: end });
+  syncAndRender();
+  document.getElementById("courseName").value = "";
+}
 
-  const startMin = toMinutes(startTime);
-  const endMin = toMinutes(endTime);
-
-  if (endMin <= startMin) {
-    alert("End time must be after start time.");
-    return;
-  }
-
-  courses.push({ name, day, startMin, endMin });
-  saveCourses();
-  nameInput.value = "";
+function syncAndRender() {
+  localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(courses));
   render();
 }
 
-function deleteCourse(index) {
-  courses.splice(index, 1);
-  saveCourses();
-  render();
-}
-
-function clearAllCourses() {
+function exportCSV() {
   if (courses.length === 0) return;
-  const ok = confirm("Clear all courses?");
-  if (!ok) return;
-  courses = [];
-  saveCourses();
-  render();
+  const head = "Course,Day,Start,End,Status\n";
+  const body = courses.map((c, i) => {
+    const status = hasClash(i) ? "CLASH" : "OK";
+    return `${c.name},${c.day},${formatTime(c.startMin)},${formatTime(c.endMin)},${status}`;
+  }).join("\n");
+  
+  const blob = new Blob([head + body], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'my_study_schedule.csv';
+  a.click();
 }
 
-function hasClashAt(index) {
-  for (let i = 0; i < courses.length; i++) {
-    if (i === index) continue;
-    if (coursesClash(courses[index], courses[i])) return true;
-  }
-  return false;
-}
+// --- UI Rendering ---
 
-function renderCourses() {
+function render() {
   const list = document.getElementById("courseList");
-  list.innerHTML = "";
-
-  if (courses.length === 0) {
-    const empty = document.createElement("li");
-    const label = document.createElement("span");
-    label.textContent = "No courses yet. Add your first class above.";
-    empty.appendChild(label);
-    list.appendChild(empty);
-    return;
-  }
-
-  courses.forEach((course, index) => {
+  const grid = document.getElementById("weeklyGrid");
+  
+  // Render List
+  list.innerHTML = courses.length ? "" : "<li style='color:var(--text-muted)'>No classes added.</li>";
+  courses.forEach((c, i) => {
     const li = document.createElement("li");
-    const clash = hasClashAt(index);
-
-    const label = document.createElement("span");
-    label.textContent = `${course.name} (${formatRange(course)})`;
-    if (clash) {
-      li.classList.add("clash");
-      label.textContent += " - clash";
-    }
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = "Delete";
-    btn.onclick = () => deleteCourse(index);
-
-    li.appendChild(label);
-    li.appendChild(btn);
+    li.className = `card ${hasClash(i) ? 'clash' : ''}`;
+    li.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; padding:0.5rem";
+    li.innerHTML = `
+      <div style="font-size:0.85rem"><strong>${c.name}</strong><br>${c.day} ${formatTime(c.startMin)}-${formatTime(c.endMin)}</div>
+      <button onclick="deleteCourse(${i})" style="color:var(--danger); padding:4px">✕</button>
+    `;
     list.appendChild(li);
   });
-}
 
-function renderWeeklyGrid() {
-  const grid = document.getElementById("weeklyGrid");
+  // Render Grid
   grid.innerHTML = "";
+  const totalSlots = ((CONFIG.END_HOUR - CONFIG.START_HOUR) * 60) / CONFIG.RES_MINS;
+  grid.style.gridTemplateRows = `auto repeat(${totalSlots}, 20px)`;
 
-  const hours = GRID_END_HOUR - GRID_START_HOUR;
-  const totalSlots = (hours * 60) / SLOT_MINUTES;
-  const startGlobalMin = GRID_START_HOUR * 60;
+  // Headers
+  grid.innerHTML += `<div class="cell-head">Time</div>`;
+  CONFIG.DAYS.forEach(d => grid.innerHTML += `<div class="cell-head">${d}</div>`);
 
-  // row 1 is the header; rows 2.. are 15-min slots
-  grid.style.gridTemplateRows = `auto repeat(${totalSlots}, 22px)`;
-
-  // Header row
-  const timeHead = document.createElement("div");
-  timeHead.className = "cell-head";
-  timeHead.style.gridColumn = "1";
-  timeHead.style.gridRow = "1";
-  timeHead.textContent = "Time";
-  grid.appendChild(timeHead);
-
-  DAYS.forEach((day, idx) => {
-    const cell = document.createElement("div");
-    cell.className = "cell-head";
-    cell.style.gridColumn = String(2 + idx);
-    cell.style.gridRow = "1";
-    cell.textContent = day;
-    grid.appendChild(cell);
-  });
-
-  // Slot background cells + hourly labels
-  for (let s = 0; s < totalSlots; s++) {
-    const absMin = startGlobalMin + s * SLOT_MINUTES;
-    const hour = Math.floor(absMin / 60);
-    const hourIndex = hour - GRID_START_HOUR;
-    const slotInHour = s - hourIndex * (60 / SLOT_MINUTES);
-
-    // Only show the hour label once per hour (at the first slot of that hour)
-    const isFirstSlotOfHour = slotInHour === 0;
-    if (isFirstSlotOfHour) {
-      const hourCell = document.createElement("div");
-      hourCell.className = "time-col";
-      hourCell.style.gridColumn = "1";
-      hourCell.style.gridRow = `${2 + s} / ${2 + s + 60 / SLOT_MINUTES}`;
-      hourCell.textContent = `${String(hour).padStart(2, "0")}:00`;
-      grid.appendChild(hourCell);
+  // Time labels & empty slots
+  for (let i = 0; i < totalSlots; i++) {
+    const mins = CONFIG.START_HOUR * 60 + i * CONFIG.RES_MINS;
+    if (mins % 60 === 0) {
+      const label = document.createElement("div");
+      label.className = "time-col";
+      label.style.gridRow = `${i + 2} / span 4`;
+      label.textContent = formatTime(mins);
+      grid.appendChild(label);
     }
-
-    DAYS.forEach((_day, dayIdx) => {
-      const cell = document.createElement("div");
-      cell.className = "slot-cell";
-      cell.style.gridColumn = String(2 + dayIdx);
-      cell.style.gridRow = String(2 + s);
-      grid.appendChild(cell);
+    // Background slots
+    CONFIG.DAYS.forEach((_, dIdx) => {
+      const slot = document.createElement("div");
+      slot.className = "slot-cell";
+      slot.style.gridColumn = dIdx + 2;
+      slot.style.gridRow = i + 2;
+      grid.appendChild(slot);
     });
   }
 
-  // Course pills spanning their full duration
-  courses.forEach((course, index) => {
-    const dayIdx = DAYS.indexOf(course.day);
-    if (dayIdx === -1) return;
-
-    // convert minutes to slot indices (snap to slot boundaries)
-    const startSlot = Math.floor((course.startMin - startGlobalMin) / SLOT_MINUTES);
-    const endSlot = Math.ceil((course.endMin - startGlobalMin) / SLOT_MINUTES);
-
-    const clampedStart = Math.max(0, Math.min(totalSlots, startSlot));
-    const clampedEnd = Math.max(0, Math.min(totalSlots, endSlot));
-    if (clampedEnd <= clampedStart) return;
+  // Pills
+  courses.forEach((c, i) => {
+    const dIdx = CONFIG.DAYS.indexOf(c.day);
+    if (dIdx === -1) return;
+    
+    const startSlot = (c.startMin - CONFIG.START_HOUR * 60) / CONFIG.RES_MINS;
+    const endSlot = (c.endMin - CONFIG.START_HOUR * 60) / CONFIG.RES_MINS;
 
     const pill = document.createElement("div");
-    pill.className = `pill ${hasClashAt(index) ? "clash-pill" : ""}`;
-    pill.style.gridColumn = String(2 + dayIdx);
-    pill.style.gridRow = `${2 + clampedStart} / ${2 + clampedEnd}`;
-    pill.textContent = `${course.name}`;
-
+    pill.className = `pill ${hasClash(i) ? 'clash-pill' : ''}`;
+    pill.style.gridColumn = dIdx + 2;
+    pill.style.gridRow = `${Math.floor(startSlot) + 2} / ${Math.floor(endSlot) + 2}`;
+    pill.textContent = c.name;
     grid.appendChild(pill);
   });
 }
 
-function render() {
-  renderCourses();
-  renderWeeklyGrid();
-}
-
+window.deleteCourse = (i) => { courses.splice(i, 1); syncAndRender(); };
 document.getElementById("addCourseBtn").addEventListener("click", addCourse);
-document.getElementById("clearAllBtn").addEventListener("click", clearAllCourses);
+document.getElementById("downloadCsv").addEventListener("click", exportCSV);
+document.getElementById("clearAllBtn").addEventListener("click", () => { if(confirm("Clear schedule?")) { courses=[]; syncAndRender(); } });
+
 render();

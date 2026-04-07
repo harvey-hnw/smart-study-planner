@@ -2,59 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Smart Study Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Study Planner | UNSW Edition</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <main class="app">
-    <h1>Smart Study Planner</h1>
-
-    <section class="card">
-      <h2>Add Course</h2>
-      <div class="add-grid">
-        <input type="text" id="courseName" placeholder="Course Name" autocomplete="off">
-
-        <select id="courseDay">
-          <option value="Mon">Mon</option>
-          <option value="Tue">Tue</option>
-          <option value="Wed">Wed</option>
-          <option value="Thu">Thu</option>
-          <option value="Fri">Fri</option>
-          <option value="Sat">Sat</option>
-          <option value="Sun">Sun</option>
-        </select>
-
-        <label class="time-field">
-          <span>Start</span>
-          <input type="time" id="startTime">
-        </label>
-
-        <label class="time-field">
-          <span>End</span>
-          <input type="time" id="endTime">
-        </label>
-
-        <button type="button" id="addCourseBtn">Add Course</button>
+  <main class="app-container">
+    <header class="app-header">
+      <h1>Smart Study Planner</h1>
+      <div class="header-actions">
+        <button id="downloadCsv" class="btn-secondary">Export CSV</button>
+        <button id="clearAllBtn" class="btn-danger">Clear All</button>
       </div>
-      <p class="hint">Tip: clashes are highlighted automatically when times overlap on the same day.</p>
-    </section>
+    </header>
 
-    <section class="card">
-      <div class="section-head">
-        <h2>Courses</h2>
-        <button type="button" id="clearAllBtn" class="ghost">Clear All</button>
-      </div>
-      <ul id="courseList"></ul>
-    </section>
+    <div class="layout-grid">
+      <aside class="controls">
+        <section class="card">
+          <h2>Add New Class</h2>
+          <div class="form-group">
+            <input type="text" id="courseName" placeholder="e.g., COMP2521" autocomplete="off">
+            <select id="courseDay">
+              <option value="Mon">Monday</option>
+              <option value="Tue">Tuesday</option>
+              <option value="Wed">Wednesday</option>
+              <option value="Thu">Thursday</option>
+              <option value="Fri">Friday</option>
+            </select>
+            <div class="time-inputs">
+              <label>Start <input type="time" id="startTime" value="09:00"></label>
+              <label>End <input type="time" id="endTime" value="11:00"></label>
+            </div>
+            <button id="addCourseBtn" class="btn-primary">Add to Schedule</button>
+          </div>
+        </section>
 
-    <section class="card">
-      <h2>Weekly View</h2>
-      <div id="weeklyGrid" class="weekly-grid"></div>
-    </section>
+        <section class="card">
+          <h2>Current Courses</h2>
+          <ul id="courseList" class="course-list"></ul>
+        </section>
+      </aside>
+
+      <section class="calendar-view card">
+        <div id="weeklyGrid" class="weekly-grid"></div>
+      </section>
+    </div>
   </main>
-
   <script src="script.js"></script>
 </body>
 </html>
