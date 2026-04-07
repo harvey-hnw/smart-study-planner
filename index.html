@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Study Planner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <h1>Smart Study Planner</h1>
+
+  <div class="add-row">
+    <input type="text" id="courseName" placeholder="Course Name" autocomplete="off">
+    <input type="text" id="courseTime" placeholder="Time (e.g. Mon 10-12 or Mon 11-1)" autocomplete="off">
+    <button type="button" onclick="addCourse()">Add Course</button>
+  </div>
+
+  <h2>Courses</h2>
+  <ul id="courseList"></ul>
+
+  <script src="script.js"></script>
+</body>
+</html>
