@@ -1,92 +1,128 @@
-let courses = [];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const GRID_START_HOUR = 8;
+const GRID_END_HOUR = 20;
+const SLOT_MINUTES = 15; // render at 15-min resolution so blocks are continuous
+const STORAGE_KEY = "smart-study-planner.courses";
+let courses = loadCourses();
 
-const DAY_RE =
-  /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i;
-
-/** @returns {{ day: string, startMin: number, endMin: number } | null} */
-function parseSchedule(timeStr) {
-  const raw = timeStr.trim();
-  const dm = raw.match(DAY_RE);
-  const day = dm ? dm[1].slice(0, 3).toLowerCase() : null;
-  const rest = dm ? raw.slice(dm[0].length).trim() : raw;
-
-  const rm = rest.match(
-    /(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?/
-  );
-  if (!rm || !day) return null;
-
-  let h1 = parseInt(rm[1], 10);
-  const m1 = rm[2] ? parseInt(rm[2], 10) : 0;
-  let h2 = parseInt(rm[3], 10);
-  const m2 = rm[4] ? parseInt(rm[4], 10) : 0;
-
-  let startMin = h1 * 60 + m1;
-  let endMin = h2 * 60 + m2;
-
-  if (endMin <= startMin) {
-    if (h2 <= 12) {
-      h2 += 12;
-      endMin = h2 * 60 + m2;
-    } else {
-      endMin += 24 * 60;
-    }
+function loadCourses() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_err) {
+    return [];
   }
+}
 
-  return { day, startMin, endMin };
+function saveCourses() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(courses));
+}
+
+function toMinutes(timeValue) {
+  const [h, m] = timeValue.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatTime(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function formatRange(course) {
+  return `${course.day} ${formatTime(course.startMin)}-${formatTime(course.endMin)}`;
 }
 
 function rangesOverlap(a, b) {
   return a.startMin < b.endMin && b.startMin < a.endMin;
 }
 
-function schedulesClash(t1, t2) {
-  if (t1 === t2) return true;
-  const p1 = parseSchedule(t1);
-  const p2 = parseSchedule(t2);
-  if (p1 && p2 && p1.day === p2.day) {
-    return rangesOverlap(
-      { startMin: p1.startMin, endMin: p1.endMin },
-      { startMin: p2.startMin, endMin: p2.endMin }
-    );
-  }
-  return false;
+function coursesClash(a, b) {
+  return a.day === b.day && rangesOverlap(a, b);
 }
 
 function addCourse() {
-  const name = document.getElementById("courseName").value.trim();
-  const time = document.getElementById("courseTime").value.trim();
+  const nameInput = document.getElementById("courseName");
+  const dayInput = document.getElementById("courseDay");
+  const startInput = document.getElementById("startTime");
+  const endInput = document.getElementById("endTime");
 
-  if (!name || !time) return;
+  const name = nameInput.value.trim();
+  const day = dayInput.value;
+  const startTime = startInput.value;
+  const endTime = endInput.value;
 
-  courses.push({ name, time });
-  document.getElementById("courseName").value = "";
-  document.getElementById("courseTime").value = "";
+  if (!name || !day || !startTime || !endTime) {
+    alert("Please fill in course name, day, start, and end time.");
+    return;
+  }
 
-  renderCourses();
+  const startMin = toMinutes(startTime);
+  const endMin = toMinutes(endTime);
+
+  if (endMin <= startMin) {
+    alert("End time must be after start time.");
+    return;
+  }
+
+  courses.push({ name, day, startMin, endMin });
+  saveCourses();
+  nameInput.value = "";
+  render();
+}
+
+function deleteCourse(index) {
+  courses.splice(index, 1);
+  saveCourses();
+  render();
+}
+
+function clearAllCourses() {
+  if (courses.length === 0) return;
+  const ok = confirm("Clear all courses?");
+  if (!ok) return;
+  courses = [];
+  saveCourses();
+  render();
+}
+
+function hasClashAt(index) {
+  for (let i = 0; i < courses.length; i++) {
+    if (i === index) continue;
+    if (coursesClash(courses[index], courses[i])) return true;
+  }
+  return false;
 }
 
 function renderCourses() {
   const list = document.getElementById("courseList");
   list.innerHTML = "";
 
+  if (courses.length === 0) {
+    const empty = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = "No courses yet. Add your first class above.";
+    empty.appendChild(label);
+    list.appendChild(empty);
+    return;
+  }
+
   courses.forEach((course, index) => {
     const li = document.createElement("li");
-    const clash = checkClash(course, index);
+    const clash = hasClashAt(index);
 
     const label = document.createElement("span");
-    label.textContent = `${course.name} (${course.time})`;
+    label.textContent = `${course.name} (${formatRange(course)})`;
     if (clash) {
       li.classList.add("clash");
-      label.textContent += " — clash";
+      label.textContent += " - clash";
     }
 
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = "Delete";
-    btn.onclick = () => {
-      courses.splice(index, 1);
-      renderCourses();
-    };
+    btn.onclick = () => deleteCourse(index);
 
     li.appendChild(label);
     li.appendChild(btn);
@@ -94,10 +130,89 @@ function renderCourses() {
   });
 }
 
-function checkClash(course, index) {
-  for (let i = 0; i < courses.length; i++) {
-    if (i === index) continue;
-    if (schedulesClash(course.time, courses[i].time)) return true;
+function renderWeeklyGrid() {
+  const grid = document.getElementById("weeklyGrid");
+  grid.innerHTML = "";
+
+  const hours = GRID_END_HOUR - GRID_START_HOUR;
+  const totalSlots = (hours * 60) / SLOT_MINUTES;
+  const startGlobalMin = GRID_START_HOUR * 60;
+
+  // row 1 is the header; rows 2.. are 15-min slots
+  grid.style.gridTemplateRows = `auto repeat(${totalSlots}, 22px)`;
+
+  // Header row
+  const timeHead = document.createElement("div");
+  timeHead.className = "cell-head";
+  timeHead.style.gridColumn = "1";
+  timeHead.style.gridRow = "1";
+  timeHead.textContent = "Time";
+  grid.appendChild(timeHead);
+
+  DAYS.forEach((day, idx) => {
+    const cell = document.createElement("div");
+    cell.className = "cell-head";
+    cell.style.gridColumn = String(2 + idx);
+    cell.style.gridRow = "1";
+    cell.textContent = day;
+    grid.appendChild(cell);
+  });
+
+  // Slot background cells + hourly labels
+  for (let s = 0; s < totalSlots; s++) {
+    const absMin = startGlobalMin + s * SLOT_MINUTES;
+    const hour = Math.floor(absMin / 60);
+    const hourIndex = hour - GRID_START_HOUR;
+    const slotInHour = s - hourIndex * (60 / SLOT_MINUTES);
+
+    // Only show the hour label once per hour (at the first slot of that hour)
+    const isFirstSlotOfHour = slotInHour === 0;
+    if (isFirstSlotOfHour) {
+      const hourCell = document.createElement("div");
+      hourCell.className = "time-col";
+      hourCell.style.gridColumn = "1";
+      hourCell.style.gridRow = `${2 + s} / ${2 + s + 60 / SLOT_MINUTES}`;
+      hourCell.textContent = `${String(hour).padStart(2, "0")}:00`;
+      grid.appendChild(hourCell);
+    }
+
+    DAYS.forEach((_day, dayIdx) => {
+      const cell = document.createElement("div");
+      cell.className = "slot-cell";
+      cell.style.gridColumn = String(2 + dayIdx);
+      cell.style.gridRow = String(2 + s);
+      grid.appendChild(cell);
+    });
   }
-  return false;
+
+  // Course pills spanning their full duration
+  courses.forEach((course, index) => {
+    const dayIdx = DAYS.indexOf(course.day);
+    if (dayIdx === -1) return;
+
+    // convert minutes to slot indices (snap to slot boundaries)
+    const startSlot = Math.floor((course.startMin - startGlobalMin) / SLOT_MINUTES);
+    const endSlot = Math.ceil((course.endMin - startGlobalMin) / SLOT_MINUTES);
+
+    const clampedStart = Math.max(0, Math.min(totalSlots, startSlot));
+    const clampedEnd = Math.max(0, Math.min(totalSlots, endSlot));
+    if (clampedEnd <= clampedStart) return;
+
+    const pill = document.createElement("div");
+    pill.className = `pill ${hasClashAt(index) ? "clash-pill" : ""}`;
+    pill.style.gridColumn = String(2 + dayIdx);
+    pill.style.gridRow = `${2 + clampedStart} / ${2 + clampedEnd}`;
+    pill.textContent = `${course.name}`;
+
+    grid.appendChild(pill);
+  });
 }
+
+function render() {
+  renderCourses();
+  renderWeeklyGrid();
+}
+
+document.getElementById("addCourseBtn").addEventListener("click", addCourse);
+document.getElementById("clearAllBtn").addEventListener("click", clearAllCourses);
+render();
